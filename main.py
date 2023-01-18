@@ -1,6 +1,10 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, url_for, redirect, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
+from flask_wtf import FlaskForm
+from wtforms import StringField, PasswordField, SelectField
+from wtforms.validators import InputRequired
+from flask_bootstrap import Bootstrap
 
 app = Flask(__name__)
 
@@ -10,6 +14,12 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
+Bootstrap = Bootstrap(app)
+
+class Login(FlaskForm):
+    username = StringField('', validators=[InputRequired()], render_kw={'autofocus':True, 'placeholder':'Username'})
+    password = PasswordField('', validators=[InputRequired()], render_kw={'autofocus':True, 'placeholder':'Username'})
+    level = SelectField('', validators=[InputRequired()], choices=[('Admin','Admin'), ('User','User')])
 
 class User(db.Model) :
     __tablename__ = 'user'
@@ -35,7 +45,29 @@ class Role(db.Model):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return redirect(url_for('login'))
+def login_dulu(f):
+    @wraps(f)
+    def wrap(*args, **kwargs):
+        if 'login' in session:
+            return f(*args,**kwargs)
+        else:
+            return redirect(url_for('login'))
+    return wrap
+@app.route('/login')
+def login():
+    form = Login()
+    if form.validate_on_submit():
+        user = User.query.filter_by(user=form.username.data) .first()
+        if user:
+            if bcrypt.check_password_hash(user.password, form.password.data) and user.level == form.level.data:
+                session['login'] = True
+                session['id'] = user.id
+                session['level'] = user.level
+                return redirect(url_for('dashboard'))
+        pesan = "Username atau password anda salah"
+        return render_template("login.html", pesan=pesan, form=form)
+    return render_template('login.html', form=form)
 
 @app.route('/dashboard')
 def dashboard():
